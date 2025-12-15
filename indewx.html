@@ -1,0 +1,837 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Geometry Dash - Final Fix & Features</title>
+    <style>
+        /* --- GLOBAL STYLES --- */
+        body {
+            margin: 0; padding: 0;
+            background-color: #000;
+            overflow: hidden;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            display: flex; justify-content: center; align-items: center;
+            height: 100vh;
+            color: white;
+            user-select: none; -webkit-user-select: none;
+        }
+
+        #gameContainer {
+            position: relative;
+            box-shadow: 0 0 50px rgba(0, 255, 255, 0.2);
+            border: 2px solid #333;
+            width: 100%; max-width: 800px;
+            aspect-ratio: 16/9; 
+            background: #111;
+            overflow: hidden;
+        }
+
+        canvas { 
+            width: 100%; height: 100%; display: block; 
+            touch-action: none; 
+        }
+
+        #ui { position: absolute; top: 10px; left: 20px; z-index: 10; pointer-events: none; }
+        h2 { text-shadow: 2px 2px 0 #000; margin: 0; }
+
+        /* --- MENU & SCREEN OVERLAYS --- */
+        .menu-screen {
+            background: rgba(0,0,0,0.9);
+            position: absolute; top: 0; left: 0; right: 0; bottom: 0;
+            display: flex; flex-direction: column;
+            justify-content: center; align-items: center;
+            z-index: 100;
+            pointer-events: auto;
+        }
+
+        button {
+            width: 220px; padding: 15px; margin: 5px;
+            background: #222; color: #fff;
+            border: 2px solid #0ff; border-radius: 8px;
+            font-weight: bold; cursor: pointer;
+            font-size: 16px;
+            touch-action: manipulation;
+        }
+        button:active { background: #0ff; color: #000; transform: scale(0.95); }
+
+        /* --- LEVEL SELECT FIX (Thêm cuộn level) --- */
+        #levelSelectScreen {
+            overflow-y: auto; /* Thêm cuộn dọc */
+            max-height: 100%;
+            padding: 20px 0;
+        }
+        #levelList {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            width: 100%;
+            max-width: 300px; /* Giới hạn chiều rộng cho danh sách */
+        }
+
+        /* --- CUSTOMIZE SCREEN --- */
+        #customizeScreen { 
+            flex-direction: row; 
+            flex-wrap: wrap;
+            align-content: flex-start;
+            padding-top: 50px;
+        }
+        .color-option {
+            width: 50px; height: 50px; margin: 10px;
+            border-radius: 50%; border: 3px solid transparent;
+            cursor: pointer; transition: border-color 0.2s;
+        }
+        .color-option.selected {
+            border-color: yellow;
+        }
+        .customize-group {
+            width: 100%; text-align: center; margin: 20px 0 10px;
+        }
+        
+        /* --- EDITOR UI --- */
+        .editor-controls {
+            position: absolute; top: 0; left: 0; right: 0; bottom: 0;
+            display: none; flex-direction: column; z-index: 50;
+            pointer-events: none;
+        }
+        .row { display: flex; justify-content: center; gap: 5px; margin-bottom: 5px; }
+        .tool-btn { padding: 5px 10px; font-size: 12px; width: auto; min-width: 60px; }
+        .active-tool { background: #ffcc00 !important; color: black !important; }
+
+        /* Vị trí Controls */
+        .editor-controls .row {
+            position: absolute;
+            width: auto; 
+            padding: 5px;
+            background: rgba(0,0,0,0.8);
+            pointer-events: auto;
+        }
+        .controls-top {
+            top: 0; 
+            left: 50%; 
+            transform: translateX(-50%);
+            border-bottom: 1px solid #555;
+            white-space: nowrap; 
+            border-radius: 0 0 8px 8px;
+        }
+        .controls-bottom {
+            bottom: 0; 
+            left: 50%; 
+            transform: translateX(-50%);
+            border-top: 1px solid #555;
+            border-radius: 8px 8px 0 0;
+        }
+    </style>
+</head>
+<body>
+
+<div id="gameContainer">
+    <canvas id="gameCanvas"></canvas>
+    
+    <div id="ui">
+        <h2 id="scoreText">0%</h2>
+    </div>
+
+    <div id="mainMenu" class="menu-screen">
+        <h1 style="color:#0ff; font-size:40px; margin-bottom:20px;">NEON DASH</h1>
+        <button onclick="showLevelSelect()">▶ CHƠI</button>
+        <button onclick="showCustomizeScreen()">🎨 TÙY CHỈNH</button>
+        <button onclick="enterEditor()" style="border-color:#ff00ff">🛠️ TẠO MAP</button>
+    </div>
+
+    <div id="levelSelectScreen" class="menu-screen" style="display: none;">
+        <h1 style="color:#0ff; margin-bottom:20px;">CHỌN MÀN CHƠI</h1>
+        <div id="levelList">
+            </div>
+        <button onclick="showMenu()" style="border-color:gray; margin-top: 20px;">⬅ QUAY LẠI</button>
+    </div>
+
+    <div id="customizeScreen" class="menu-screen" style="display: none;">
+        <h1 style="width:100%; text-align:center; color:#fff; margin-bottom:20px;">TÙY CHỈNH CUBE</h1>
+
+        <div class="customize-group">
+            <h3 style="color:#0ff;">CHỌN MÀU CUBE</h3>
+            <div id="colorOptions" class="row">
+                </div>
+        </div>
+
+        <div class="customize-group">
+            <h3 style="color:#f0f;">HIỆU ỨNG KHỐI</h3>
+            <div class="row">
+                <button class="tool-btn selected" data-effect="NORMAL" onclick="setEffect('NORMAL', this)">MẶC ĐỊNH</button>
+                <button class="tool-btn" data-effect="EXPLOSION" onclick="setEffect('EXPLOSION', this)">NỔ</button>
+                <button class="tool-btn" data-effect="DUST" onclick="setEffect('DUST', this)">BỤI</button>
+            </div>
+        </div>
+        
+        <button onclick="showMenu()" style="border-color:gray; margin-top: 30px;">⬅ QUAY LẠI MENU</button>
+    </div>
+
+
+    <div id="victoryScreen" class="menu-screen" style="display: none;">
+        <h1 style="color:gold;">CHIẾN THẮNG!</h1>
+        <button onclick="resetGame()">CHƠI LẠI</button>
+        <button onclick="showMenu()">MENU CHÍNH</button>
+    </div>
+
+    <div id="gameOverScreen" class="menu-screen" style="display: none; background:rgba(50,0,0,0.8);">
+        <h1 style="color:red;">THẤT BẠI</h1>
+        <button onclick="resetGame()">THỬ LẠI</button>
+        <button onclick="showMenu()">MENU CHÍNH</button>
+    </div>
+
+    <div id="editorUI" class="editor-controls">
+        <div class="row controls-top">
+            <button class="tool-btn active-tool" onclick="setTool('SPIKE', this)">GAI</button>
+            <button class="tool-btn" onclick="setTool('BLOCK', this)">KHỐI</button>
+            <button class="tool-btn" onclick="setTool('PAD', this)">ĐỆM</button>
+            <button class="tool-btn" onclick="setTool('ERASER', this)">TẨY</button>
+            <button class="tool-btn" style="color:#0ff" onclick="setTool('PORTAL_CUBE', this)">CUBE</button>
+            <button class="tool-btn" style="color:#f0f" onclick="setTool('PORTAL_WAVE', this)">WAVE</button>
+            <button class="tool-btn" style="color:orange" onclick="setTool('PORTAL_SPEED_FAST', this)">FAST</button>
+            <button class="tool-btn" style="color:yellow" onclick="setTool('PORTAL_SPEED_NORMAL', this)">NORMAL</button>
+        </div>
+        <div class="row controls-bottom">
+            <button class="tool-btn" style="background:#007bff" onclick="testMap()">▶ CHƠI THỬ</button>
+            <button class="tool-btn" onclick="saveMap()">💾 LƯU</button>
+            <button class="tool-btn" onclick="loadMap()">📂 TẢI</button>
+            <button class="tool-btn" style="background:#dc3545" onclick="showMenu()">❌ THOÁT</button>
+        </div>
+    </div>
+</div>
+
+<script>
+    const canvas = document.getElementById('gameCanvas');
+    const ctx = canvas.getContext('2d');
+
+    // --- CẤU HÌNH LOGIC ---
+    const GW = 800; 
+    const GH = 450; 
+    const FLOOR_H = 60;
+    const FLOOR_Y = GH - FLOOR_H;
+    const BLK = 30;
+
+    const GRAVITY = 0.65;
+    const JUMP_FORCE = -11.5;
+    const PAD_FORCE = -16;
+    const WAVE_LIFT = -7;
+    const WAVE_DROP = 7;
+    const GAME_SPEED_NORMAL = 6;
+    const GAME_SPEED_FAST = 9;
+    
+    // --- BIẾN GAME VÀ CUSTOMIZATION ---
+    let speed = GAME_SPEED_NORMAL;
+    let mode = 'MENU';
+    let pMode = 'CUBE';
+    let mapIdx = -1;
+    let obstacles = [];
+    let camX = 0;
+    let frame = 0;
+    
+    let p = { x: 150, y: 0, w: 30, h: 30, dy: 0, angle: 0, dead: false, onGround: false };
+    let input = false;
+    let particles = [];
+    let waveTrail = [];
+
+    // CUSTOMIZATION STATE
+    let playerColor = localStorage.getItem('playerColor') || '#0ff'; 
+    let playerEffect = localStorage.getItem('playerEffect') || 'NORMAL'; 
+
+    // --- BIẾN EDITOR PANNING (Kéo Map) ---
+    let isPanning = false;
+    let lastPanX = 0;
+    
+    // --- KHỞI TẠO EVENT ---
+    function resize() {
+        canvas.width = canvas.parentElement.clientWidth;
+        canvas.height = canvas.parentElement.clientHeight;
+    }
+    window.addEventListener('resize', resize);
+    resize();
+
+    // Input Handler
+    const handleInputDown = (e) => {
+        // Chuột phải (button 2) bắt đầu Panning PC
+        if (mode === 'EDITOR' && e.button === 2) { 
+            isPanning = true;
+            lastPanX = e.clientX;
+            e.preventDefault(); 
+            return;
+        }
+        
+        if (mode === 'GAMEOVER' || mode === 'VICTORY') {
+            resetGame();
+            input = false; 
+            return; 
+        }
+        
+        if (mode === 'PLAY' || mode === 'EDITOR_TEST') input = true;
+        if (mode === 'EDITOR' && e.button !== 2) handleEditorClick(e);
+    };
+
+    const handleInputMove = (e) => {
+        if (mode === 'EDITOR' && isPanning) {
+            let deltaX = e.clientX - lastPanX;
+            camX -= deltaX / (canvas.height / GH); 
+            camX = Math.max(0, camX);
+            lastPanX = e.clientX;
+        }
+    };
+
+    const handleInputUp = (e) => { 
+        input = false; 
+        if (e.button === 2) isPanning = false;
+    };
+
+    // --- MOBILE TOUCH LOGIC (Hoạt động tốt trên điện thoại) ---
+    canvas.addEventListener('touchstart', (e) => { 
+        e.preventDefault(); 
+        
+        if(mode === 'EDITOR') {
+            if (e.touches.length === 2) { // 2 ngón tay -> Pan
+                isPanning = true;
+                lastPanX = (e.touches[0].clientX + e.touches[1].clientX) / 2;
+            } else if (e.touches.length === 1 && !isPanning) { // 1 ngón tay -> Đặt vật thể
+                handleEditorClick(e);
+            }
+        } else {
+            handleInputDown(e);
+        }
+    }, {passive: false});
+
+    canvas.addEventListener('touchmove', (e) => {
+        if (mode === 'EDITOR' && isPanning && e.touches.length >= 2) {
+            let currentX = (e.touches[0].clientX + e.touches[1].clientX) / 2;
+            let deltaX = currentX - lastPanX;
+            camX -= deltaX / (canvas.height / GH);
+            camX = Math.max(0, camX);
+            lastPanX = currentX;
+        }
+    }, {passive: false});
+
+    canvas.addEventListener('touchend', (e) => {
+        if (mode === 'EDITOR' && isPanning && e.touches.length < 2) {
+            isPanning = false;
+        }
+        handleInputUp(e);
+    });
+    // --- END MOBILE TOUCH LOGIC ---
+
+    canvas.addEventListener('mousedown', handleInputDown);
+    window.addEventListener('mousemove', handleInputMove);
+    window.addEventListener('mouseup', handleInputUp);
+    
+    // Keyboard
+    window.addEventListener('keydown', e => {
+        if(e.code === 'Space' || e.code === 'ArrowUp') input = true;
+        if(e.code === 'KeyR' && (mode === 'GAMEOVER' || mode === 'VICTORY')) resetGame(); 
+    });
+    window.addEventListener('keyup', handleInputUp);
+    canvas.addEventListener('contextmenu', e => e.preventDefault());
+
+    // --- MAP DATA ---
+    const BUILT_IN_MAPS = [
+        {name: 'MAP 1: KHỞI ĐẦU', data: [
+            {x: 500, y: FLOOR_Y - BLK, type: 'SPIKE'}, {x: 700, y: FLOOR_Y - BLK*2, type: 'BLOCK'},
+            {x: 1200, y: FLOOR_Y - BLK*3, type: 'BLOCK'}, {x: 1230, y: FLOOR_Y - BLK*3, type: 'BLOCK'},
+            {x: 1500, y: FLOOR_Y - BLK, type: 'PAD'}, {x: 1800, y: FLOOR_Y - BLK*2, type: 'BLOCK'},
+            {x: 2200, y: FLOOR_Y - BLK, type: 'SPIKE'}
+        ]},
+        {name: 'MAP 2: SÓNG DỮ (WAVE)', data: [
+            {x: 400, y: 0, type: 'PORTAL_WAVE'}, {x: 2500, y: 0, type: 'PORTAL_CUBE'}
+        ]},
+        {name: 'MAP 3: TỐC ĐỘ', data: [
+            {x: 400, y: 0, type: 'PORTAL_SPEED_FAST'}, {x: 600, y: FLOOR_Y - BLK, type: 'SPIKE'},
+            {x: 700, y: FLOOR_Y - BLK*2, type: 'BLOCK'}, {x: 900, y: FLOOR_Y - BLK*4, type: 'BLOCK'},
+            {x: 1100, y: FLOOR_Y - BLK, type: 'PAD'}, {x: 1500, y: FLOOR_Y - BLK*3, type: 'BLOCK'},
+            {x: 1800, y: 0, type: 'PORTAL_SPEED_NORMAL'}
+        ]},
+    ];
+
+    function generateMap(index) {
+        if (index < BUILT_IN_MAPS.length) {
+            return BUILT_IN_MAPS[index].data.map(o => ({
+                x: o.x, y: o.y, w: BLK, 
+                h: o.h || (o.type.startsWith('PORTAL') ? FLOOR_Y : BLK),
+                type: o.type
+            }));
+        }
+        // Map Tùy chỉnh (Index cuối cùng)
+        const customMapData = localStorage.getItem('myMap');
+        if (customMapData) {
+             return JSON.parse(customMapData);
+        }
+        return [];
+    }
+    
+    // --- GAME CONTROL ---
+    function startGame(idx) {
+        mapIdx = idx;
+        // FIX: Đảm bảo mode là PLAY khi chơi map có sẵn
+        mode = 'PLAY'; 
+        localStorage.removeItem('isTestPlay');
+        resetGame();
+    }
+
+    function resetGame() {
+        p = { x: 150, y: FLOOR_Y - BLK, w: BLK, h: BLK, dy: 0, angle: 0, dead: false, onGround: true };
+        pMode = 'CUBE';
+        speed = GAME_SPEED_NORMAL; // FIX: Reset tốc độ
+        particles = [];
+        waveTrail = [];
+        input = false; 
+        
+        let targetMode = 'PLAY';
+        let loadMapData = false;
+        
+        if (localStorage.getItem('isTestPlay') === 'true') {
+            targetMode = 'EDITOR_TEST';
+            loadMapData = true;
+        } else if (mode === 'EDITOR' || mode === 'EDITOR_TEST') {
+            targetMode = 'EDITOR';
+            loadMapData = true;
+        } else if (mapIdx !== -1) {
+            // Khi chơi map thường (hoặc map custom)
+            targetMode = 'PLAY';
+        }
+
+        if (loadMapData) {
+            let d = localStorage.getItem(targetMode === 'EDITOR_TEST' ? 'tempMap' : 'myMap');
+            if(d) obstacles = JSON.parse(d);
+        } else if (mapIdx !== -1) {
+            obstacles = generateMap(mapIdx);
+        }
+
+        camX = 0; // Reset camera
+        mode = targetMode;
+
+        document.querySelectorAll('.menu-screen').forEach(el => el.style.display = 'none');
+        document.getElementById('editorUI').style.display = (mode === 'EDITOR' || mode === 'EDITOR_TEST') ? 'flex' : 'none';
+        
+        if(mode !== 'MENU') loop(); 
+    }
+
+    function showMenu() {
+        mode = 'MENU';
+        localStorage.removeItem('isTestPlay');
+        document.querySelectorAll('.menu-screen').forEach(el => el.style.display = 'none');
+        document.getElementById('mainMenu').style.display = 'flex';
+        document.getElementById('editorUI').style.display = 'none';
+    }
+
+    function renderLevelSelect() {
+        const listContainer = document.getElementById('levelList');
+        listContainer.innerHTML = '';
+
+        // 1. Render Built-in Maps
+        BUILT_IN_MAPS.forEach((map, index) => {
+            const btn = document.createElement('button');
+            btn.innerText = map.name;
+            btn.onclick = () => startGame(index);
+            listContainer.appendChild(btn);
+        });
+
+        // 2. Render Custom Map (nếu có)
+        const customMapData = localStorage.getItem('myMap');
+        if (customMapData && JSON.parse(customMapData).length > 0) {
+            const customIndex = BUILT_IN_MAPS.length;
+            const btn = document.createElement('button');
+            btn.innerText = "🛠️ MAP TÙY CHỈNH CỦA BẠN";
+            btn.style.borderColor = '#ff00ff';
+            btn.onclick = () => startGame(customIndex);
+            listContainer.appendChild(btn);
+        }
+    }
+
+    function showLevelSelect() {
+        document.querySelectorAll('.menu-screen').forEach(el => el.style.display = 'none');
+        document.getElementById('levelSelectScreen').style.display = 'flex';
+        renderLevelSelect(); // Render danh sách map (cả custom)
+    }
+
+    // --- CUSTOMIZATION LOGIC (Không đổi) ---
+    const colors = ['#0ff', '#f00', '#0f0', '#ff0', '#f0f', '#00f', '#fff', '#808080'];
+    
+    function renderColorOptions() {
+        const container = document.getElementById('colorOptions');
+        container.innerHTML = '';
+        colors.forEach(color => {
+            const div = document.createElement('div');
+            div.className = 'color-option';
+            div.style.backgroundColor = color;
+            if (color === playerColor) div.classList.add('selected');
+            div.setAttribute('data-color', color);
+            div.onclick = () => setPlayerColor(color, div);
+            container.appendChild(div);
+        });
+        
+        document.querySelectorAll('#customizeScreen .customize-group .row button').forEach(b => {
+             if (b.getAttribute('data-effect') === playerEffect) {
+                b.classList.add('selected');
+            } else {
+                b.classList.remove('selected');
+            }
+        });
+    }
+
+    function showCustomizeScreen() {
+        document.querySelectorAll('.menu-screen').forEach(el => el.style.display = 'none');
+        document.getElementById('customizeScreen').style.display = 'flex';
+        renderColorOptions();
+    }
+
+    function setPlayerColor(color, el) {
+        playerColor = color;
+        localStorage.setItem('playerColor', color);
+        document.querySelectorAll('.color-option').forEach(d => d.classList.remove('selected'));
+        el.classList.add('selected');
+    }
+
+    function setEffect(effect, el) {
+        playerEffect = effect;
+        localStorage.setItem('playerEffect', effect);
+        document.querySelectorAll('#customizeScreen .customize-group .row button').forEach(b => b.classList.remove('selected'));
+        el.classList.add('selected');
+    }
+
+    // --- UPDATE/COLLISION ---
+    function update() {
+        if (mode !== 'PLAY' && mode !== 'EDITOR_TEST') return;
+
+        camX += speed;
+        
+        // PHYSICS
+        if (pMode === 'CUBE') {
+            p.dy += GRAVITY;
+            p.y += p.dy;
+            
+            // Va chạm sàn
+            if (p.y + p.h >= FLOOR_Y) {
+                p.y = FLOOR_Y - p.h; p.dy = 0; p.onGround = true; p.angle = Math.round(p.angle / 90) * 90;
+                // FIX: Hiệu ứng DUST
+                if(playerEffect === 'DUST' && frame % 5 === 0) spawnParticle(p.x + p.w/2, p.y + p.h - 5, 'dust');
+            } else { p.onGround = false; p.angle += 5; }
+
+            if (input && p.onGround) {
+                p.dy = JUMP_FORCE; p.onGround = false;
+                spawnParticle(p.x + 15, p.y + 30, 'jump');
+            }
+        } else if (pMode === 'WAVE') {
+            p.dy = input ? WAVE_LIFT : WAVE_DROP; p.y += p.dy; p.angle = input ? -45 : 45;
+            if(frame % 2 === 0) waveTrail.push({x: p.x + camX, y: p.y + p.h/2});
+            if(waveTrail.length > 30) waveTrail.shift();
+            if (p.y + p.h > FLOOR_Y || p.y < 0) die();
+        }
+
+        // COLLISION
+        let hb = { x: p.x + camX + 5, y: p.y + 5, w: p.w - 10, h: p.h - 10 };
+        let maxObjX = 0;
+
+        obstacles.forEach(o => {
+            if (o.x > maxObjX) maxObjX = o.x;
+            if (o.x < camX - 100 || o.x > camX + GW + 50) return;
+
+            if (hb.x < o.x + o.w && hb.x + hb.w > o.x && hb.y < o.y + o.h && hb.y + hb.h > o.y) {
+                
+                if (o.type === 'SPIKE') die();
+                
+                else if (o.type === 'BLOCK') {
+                    if (pMode === 'CUBE') {
+                        const oldY = p.y - p.dy; 
+                        
+                        // FIX LỚN: Logic nhảy lên Block
+                        if (oldY + p.h <= o.y && p.dy >= 0) { 
+                            // Va chạm từ phía trên (tiếp đất)
+                            p.y = o.y - p.h; p.dy = 0; p.onGround = true; p.angle = Math.round(p.angle / 90) * 90;
+                            if (input) { p.dy = JUMP_FORCE; p.onGround = false; }
+                            // FIX: Hiệu ứng DUST
+                            if(playerEffect === 'DUST' && frame % 5 === 0) spawnParticle(p.x + p.w/2, p.y + p.h - 5, 'dust');
+                            return; 
+                        }
+                    }
+                    // Va chạm ngang hoặc từ dưới lên -> Chết
+                    die(); 
+                }
+                
+                else if (o.type === 'PAD') {
+                    p.dy = PAD_FORCE; p.onGround = false;
+                    spawnParticle(p.x, p.y + p.h, 'jump');
+                }
+                
+                else if (o.type.startsWith('PORTAL')) {
+                    if (o.type.includes('WAVE')) { pMode = 'WAVE'; p.dy = 0; waveTrail = []; }
+                    else if (o.type.includes('CUBE')) { pMode = 'CUBE'; p.dy = 0; }
+                    else if (o.type.includes('FAST')) { speed = GAME_SPEED_FAST; }
+                    else if (o.type.includes('NORMAL')) { speed = GAME_SPEED_NORMAL; }
+                }
+            }
+        });
+        
+        // VICTORY
+        updateParticles();
+        
+        if (maxObjX > 0 && camX > maxObjX + GW/2) {
+            mode = 'VICTORY';
+            document.getElementById('victoryScreen').style.display = 'flex';
+            localStorage.removeItem('isTestPlay');
+        }
+        
+        let totalDistance = maxObjX > 0 ? maxObjX + GW/2 : 1000;
+        let pct = Math.min(100, Math.floor((camX / totalDistance) * 100));
+        document.getElementById('scoreText').innerText = pct + "%";
+        
+        waveTrail.forEach(t => t.x -= speed);
+        frame++;
+    }
+
+    function die() {
+        mode = 'GAMEOVER';
+        document.getElementById('gameOverScreen').style.display = 'flex';
+        localStorage.removeItem('isTestPlay');
+        
+        // FIX: Hiệu ứng EXPLOSION
+        if(playerEffect === 'EXPLOSION') {
+            for(let i=0; i<30; i++) spawnParticle(p.x+15, p.y+15, 'explode'); 
+        } else {
+            for(let i=0; i<10; i++) spawnParticle(p.x+15, p.y+15, 'soft_explode');
+        }
+    }
+    
+    // --- PARTICLE LOGIC ---
+    function spawnParticle(x, y, type) {
+        let part = { x: x, y: y, life: 1.0, type: type };
+        if(type === 'dust') { part.vx = -speed/2; part.vy = (Math.random() - 0.5); part.size = Math.random()*5+2; part.color = playerColor; } 
+        else if (type === 'jump') { part.vx = -speed/2; part.vy = 2; part.size = 10; part.life = 0.5; part.color = playerColor; } 
+        else if (type === 'explode') { part.vx = (Math.random()-0.5)*15; part.vy = (Math.random()-0.5)*15; part.size = 8; part.color = playerColor; }
+        else if (type === 'soft_explode') { part.vx = (Math.random()-0.5)*5; part.vy = (Math.random()-0.5)*5; part.size = 5; part.color = playerColor; part.life = 0.7; }
+        particles.push(part);
+    }
+
+    function updateParticles() {
+        for(let i = particles.length - 1; i >= 0; i--) {
+            let p = particles[i];
+            p.x += p.vx || 0;
+            p.y += p.vy || 0;
+            p.life -= 0.05;
+            if(p.type === 'explode') p.size *= 0.95;
+            if(p.life <= 0) particles.splice(i, 1);
+        }
+    }
+
+    // --- DRAWING ---
+    function draw() {
+        const scale = canvas.height / GH;
+        const offsetX = (canvas.width - GW * scale) / 2;
+        
+        ctx.fillStyle = '#000';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        
+        ctx.save();
+        ctx.translate(offsetX, 0);
+        ctx.scale(scale, scale);
+
+        ctx.beginPath(); ctx.rect(0,0,GW,GH); ctx.clip();
+
+        ctx.fillStyle = '#111'; ctx.fillRect(0,0,GW,GH);
+        ctx.strokeStyle = '#222'; ctx.lineWidth = 1;
+        const gOff = camX % BLK;
+        for(let x=-gOff; x<GW; x+=BLK) { ctx.beginPath(); ctx.moveTo(x,0); ctx.lineTo(x,GH); ctx.stroke(); }
+        ctx.beginPath(); ctx.moveTo(0, FLOOR_Y); ctx.lineTo(GW, FLOOR_Y); ctx.strokeStyle='#0ff'; ctx.lineWidth=2; ctx.stroke();
+
+        // Draw Particles
+        particles.forEach(p => {
+            ctx.fillStyle = p.color;
+            ctx.globalAlpha = p.life;
+            ctx.fillRect(p.x - camX, p.y, p.size, p.size);
+        });
+        ctx.globalAlpha = 1;
+
+        // Draw Wave Trail
+        if(pMode === 'WAVE' && waveTrail.length > 1) {
+            ctx.strokeStyle = playerColor; 
+            ctx.lineWidth = 5;
+            ctx.lineCap = 'round';
+            ctx.beginPath();
+            
+            let startX = waveTrail[0].x - camX;
+            ctx.moveTo(startX, waveTrail[0].y);
+
+            for(let i=1; i<waveTrail.length; i++) {
+                let currentX = waveTrail[i].x - camX;
+                ctx.lineTo(currentX, waveTrail[i].y);
+            }
+            ctx.stroke();
+        }
+
+        // Draw Obstacles
+        obstacles.forEach(o => {
+            let drawX = o.x - camX;
+            if (drawX < -50 || drawX > GW + 50) return;
+
+            if (o.type === 'SPIKE') {
+                ctx.fillStyle = '#f00';
+                ctx.beginPath();
+                ctx.moveTo(drawX, o.y+o.h);
+                ctx.lineTo(drawX + o.w/2, o.y);
+                ctx.lineTo(drawX + o.w, o.y+o.h);
+                ctx.fill();
+            } else if (o.type === 'BLOCK') {
+                ctx.fillStyle = 'transparent'; ctx.strokeStyle = '#0f0'; ctx.lineWidth=2;
+                ctx.strokeRect(drawX, o.y, o.w, o.h);
+                ctx.fillStyle = 'rgba(0,255,0,0.2)'; ctx.fillRect(drawX, o.y, o.w, o.h);
+            } else if (o.type === 'PAD') {
+                ctx.fillStyle = 'yellow';
+                ctx.beginPath(); ctx.arc(drawX+15, o.y+30, 10, Math.PI, 0); ctx.fill();
+            } else if (o.type.startsWith('PORTAL')) {
+                let color = o.type.includes('WAVE') ? '#f0f' : (o.type.includes('SPEED') ? 'orange' : '#0ff');
+                ctx.fillStyle = color;
+                ctx.globalAlpha = 0.5;
+                ctx.fillRect(drawX, 0, o.w, FLOOR_Y);
+                ctx.globalAlpha = 1;
+            }
+        });
+
+        // Draw Cube
+        if (mode !== 'GAMEOVER') {
+            ctx.save();
+            ctx.translate(p.x + p.w/2, p.y + p.h/2);
+            ctx.rotate(p.angle * Math.PI / 180);
+            
+            ctx.fillStyle = playerColor; 
+            if (pMode === 'WAVE') {
+                ctx.beginPath(); ctx.moveTo(-10,-10); ctx.lineTo(15,0); ctx.lineTo(-10,10); ctx.fill();
+            } else {
+                ctx.fillRect(-15, -15, 30, 30);
+                ctx.strokeStyle = 'white'; ctx.lineWidth=2; ctx.strokeRect(-15,-15,30,30);
+            }
+            ctx.restore();
+        }
+
+        ctx.restore();
+    }
+
+    function loop() {
+        if (mode === 'EDITOR') {
+            draw();
+            updateParticles();
+        } else {
+            update();
+            draw();
+        }
+        
+        if(mode !== 'MENU' && mode !== 'GAMEOVER' && mode !== 'VICTORY') requestAnimationFrame(loop);
+    }
+    
+    // --- EDITOR SYSTEM ---
+    let eTool = 'SPIKE';
+    
+    function enterEditor() {
+        mode = 'EDITOR';
+        mapIdx = -1;
+        camX = 0; 
+        isPanning = false; 
+        localStorage.removeItem('isTestPlay');
+        obstacles = localStorage.getItem('myMap') ? JSON.parse(localStorage.getItem('myMap')) : [];
+        document.getElementById('mainMenu').style.display = 'none';
+        document.getElementById('levelSelectScreen').style.display = 'none';
+        document.getElementById('customizeScreen').style.display = 'none';
+        document.getElementById('editorUI').style.display = 'flex';
+        loop(); 
+    }
+
+    function handleEditorClick(e) {
+        if(isPanning) return; 
+
+        const rect = canvas.getBoundingClientRect();
+        const scale = canvas.height / GH;
+        const offsetX = (canvas.width - GW * scale) / 2;
+        
+        let clientX = e.touches ? e.touches[0].clientX : e.clientX;
+        let clientY = e.touches ? e.touches[0].clientY : e.clientY;
+
+        let gx = (clientX - rect.left - offsetX) / scale;
+        let gy = (clientY - rect.top) / scale;
+
+        let snapX = Math.floor((gx + camX) / BLK) * BLK;
+        let snapY = Math.floor(gy / BLK) * BLK;
+
+        // Chỉ cho phép đặt object dưới đường sàn
+        if (snapX < 0 || snapY > FLOOR_Y) {
+            if (snapY !== FLOOR_Y - BLK && !eTool.startsWith('PORTAL')) return;
+        }
+
+        let idx = obstacles.findIndex(o => Math.abs(o.x - snapX) < 5 && Math.abs(o.y - snapY) < 5);
+        if (idx !== -1) obstacles.splice(idx, 1);
+
+        if (eTool !== 'ERASER') {
+            let type = eTool;
+            let h = BLK;
+            let y = snapY;
+            if (type.startsWith('PORTAL')) { y = 0; h = FLOOR_Y; }
+            
+            obstacles.push({x: snapX, y: y, w: BLK, h: h, type: type});
+        }
+        obstacles.sort((a,b) => a.x - b.x); 
+    }
+
+    function setTool(t, el) {
+        eTool = t;
+        document.querySelectorAll('.controls-top .tool-btn').forEach(b => b.classList.remove('active-tool'));
+        el.classList.add('active-tool');
+    }
+
+    function testMap() {
+        localStorage.setItem('tempMap', JSON.stringify(obstacles));
+        localStorage.setItem('isTestPlay', 'true');
+        mode = 'EDITOR_TEST';
+        resetGame();
+    }
+
+    function saveMap() {
+        localStorage.setItem('myMap', JSON.stringify(obstacles));
+        
+        const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(obstacles));
+        const downloadAnchorNode = document.createElement('a');
+        downloadAnchorNode.setAttribute("href", dataStr);
+        downloadAnchorNode.setAttribute("download", "custom_map.json");
+        document.body.appendChild(downloadAnchorNode);
+        downloadAnchorNode.click();
+        downloadAnchorNode.remove();
+        alert('Đã lưu map người dùng và tải file "custom_map.json"! (File này có thể dùng để chia sẻ và tải lại bằng chức năng TẢI)');
+    }
+
+    function loadMap() {
+        const fileInput = document.createElement('input');
+        fileInput.type = 'file';
+        fileInput.accept = '.json';
+        
+        fileInput.onchange = e => {
+            const file = e.target.files[0];
+            if (!file) return;
+
+            const reader = new FileReader();
+            reader.onload = function(event) {
+                try {
+                    const loadedMap = JSON.parse(event.target.result);
+                    if (Array.isArray(loadedMap)) {
+                        obstacles = loadedMap;
+                        localStorage.setItem('myMap', JSON.stringify(obstacles));
+                        camX = 0;
+                        alert('Đã tải map thành công từ file!');
+                    } else {
+                        alert('Lỗi: File không chứa định dạng map hợp lệ.');
+                    }
+                } catch (err) {
+                    alert('Lỗi khi đọc file: ' + err.message);
+                }
+            };
+            reader.readAsText(file);
+        };
+        fileInput.click();
+    }
+
+    // Init
+    loop(); 
+</script>
+</body>
+</html>
